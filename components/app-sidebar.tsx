@@ -1,7 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   ScanLine,
@@ -18,6 +19,22 @@ import {
   AvatarFallback,
 } from "@/components/ui/avatar"
 
+function decodificarJWT(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      window.atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/pos", label: "Punto de Venta", icon: ScanLine },
@@ -25,13 +42,70 @@ const navItems = [
 ]
 
 const secondaryItems = [
-  { href: "/", label: "Reportes", icon: BarChart3 },
-  { href: "/", label: "Clientes", icon: Users },
-  { href: "/", label: "Ajustes", icon: Settings },
+  { href: "/reportes", label: "Reportes", icon: BarChart3 }, // <-- Cambiamos esto
+  { href: "/clientes", label: "Clientes", icon: Users },
+  { href: "/ajustes", label: "Ajustes", icon: Settings },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+
+  const [nombreUsuario, setNombreUsuario] = useState("Cargando...")
+  const [rol, setRol] = useState("Usuario")
+  const [iniciales, setIniciales] = useState("U")
+
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    const usuarioGuardado = localStorage.getItem("username") || "usuario"
+    const usuarioLower = usuarioGuardado.toLowerCase()
+
+    const nombreFormateado = usuarioGuardado
+      .split('.')
+      .map(palabra => palabra.charAt(0).toUpperCase() + palabra.slice(1))
+      .join(' ')
+    setNombreUsuario(nombreFormateado)
+
+    const letras = nombreFormateado.split(' ')
+    const init = letras.map(l => l.charAt(0)).join('').substring(0, 2).toUpperCase()
+    setIniciales(init)
+
+    if (token) {
+      const datosToken = decodificarJWT(token)
+
+      // Intentamos leer el rol desde Java
+      const rolDesdeToken = datosToken?.roles || datosToken?.role || datosToken?.rol || datosToken?.authorities
+      
+      if (rolDesdeToken) {
+        const rolTexto = JSON.stringify(rolDesdeToken).toUpperCase()
+        if (rolTexto.includes("ADMIN")) {
+          setRol("Administrador")
+        } else {
+          setRol("Cajero")
+        }
+      } else {
+        // 🔴 BYPASS: Si Java falla en enviar el rol, forzamos Administrador para ti
+        if (usuarioLower.includes("admin") || usuarioLower === "cajero.prueba") {
+          setRol("Administrador")
+        } else {
+          setRol("Cajero")
+        }
+      }
+    } else {
+      if (usuarioLower.includes("admin") || usuarioLower === "cajero.prueba") {
+        setRol("Administrador")
+      } else {
+        setRol("Cajero")
+      }
+    }
+  }, [])
+
+  const cerrarSesion = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("username")
+    localStorage.removeItem("rol")
+    router.push("/login")
+  }
 
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground md:flex">
@@ -90,19 +164,20 @@ export function AppSidebar() {
       <div className="border-t border-sidebar-border p-3">
         <div className="flex items-center gap-3 rounded-md px-3 py-2">
           <Avatar className="size-9">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground">
-              MR
+            <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground font-bold">
+              {iniciales}
             </AvatarFallback>
           </Avatar>
           <div className="flex min-w-0 flex-1 flex-col leading-tight">
             <span className="truncate text-sm font-medium text-sidebar-accent-foreground">
-              María Reyes
+              {nombreUsuario}
             </span>
             <span className="truncate text-xs text-sidebar-foreground/60">
-              Administradora
+              {rol}
             </span>
           </div>
           <button
+            onClick={cerrarSesion}
             type="button"
             aria-label="Cerrar sesión"
             className="rounded-md p-1.5 text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"

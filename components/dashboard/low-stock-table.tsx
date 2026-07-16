@@ -1,81 +1,89 @@
-import { AlertTriangle, RotateCw } from "lucide-react"
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+"use client"
+
+import { useEffect, useState } from "react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { lowStockProducts } from "@/lib/data"
+import { AlertTriangle } from "lucide-react"
 
 export function LowStockTable() {
-  return (
-    <Card className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-            <AlertTriangle className="size-5" />
-          </div>
-          <div className="flex flex-col">
-            <h2 className="text-base font-semibold text-foreground">
-              Alertas de Stock Bajo
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Productos que requieren reabastecimiento
-            </p>
-          </div>
-        </div>
-        <Badge variant="destructive" className="rounded-full">
-          {lowStockProducts.length} productos
-        </Badge>
-      </div>
+  const [productos, setProductos] = useState<any[]>([])
+  const [cargando, setCargando] = useState(true)
 
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="pl-5">Producto</TableHead>
-              <TableHead className="text-center">Stock Actual</TableHead>
-              <TableHead className="text-center">Stock Mínimo</TableHead>
-              <TableHead className="pr-5 text-right">Acción</TableHead>
+  useEffect(() => {
+    // Tu token está intacto aquí
+    const token = localStorage.getItem("token")
+
+    fetch('http://localhost:8080/api/v1/productos', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error("No se pudo cargar la información")
+        return res.json()
+      })
+      .then(datos => {
+        const todosLosProductos = datos.content || (Array.isArray(datos) ? datos : [])
+        
+        // LA MAGIA CON PLAN B: Si no llega la variable, el mínimo por defecto será 5
+        const alertas = todosLosProductos.filter((p: any) => {
+          const minimo = p.stockMinimo || p.stock_minimo || 10; 
+          return p.stock <= minimo;
+        })
+        
+        setProductos(alertas)
+        setCargando(false)
+      })
+      .catch(err => {
+        console.error("Error conectando con SIVBO:", err)
+        setCargando(false)
+      })
+  }, [])
+
+  if (cargando) return <div className="p-8 text-center text-muted-foreground border rounded-lg">Cargando alertas del sistema...</div>
+
+  // Si no hay productos en riesgo, mostramos un mensaje de tranquilidad
+  if (productos.length === 0) return (
+    <div className="p-8 text-center text-muted-foreground border rounded-lg bg-green-50/10">
+      <p className="font-semibold text-green-600">¡Todo en orden!</p>
+      <p className="text-sm mt-1">Ningún producto tiene stock crítico en este momento.</p>
+    </div>
+  )
+
+  return (
+    <div className="rounded-md border border-red-100 shadow-sm">
+      <Table>
+        <TableHeader className="bg-red-50/50">
+          <TableRow>
+            <TableHead>Producto en Riesgo</TableHead>
+            <TableHead className="text-center">Stock Mínimo</TableHead>
+            <TableHead className="text-right">Stock Actual</TableHead>
+            <TableHead className="text-center">Acción Recomendada</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {productos.map((prod) => (
+            <TableRow key={prod.idProducto || prod.codigo_barras} className="hover:bg-red-50/30 transition-colors">
+              <TableCell className="font-medium flex items-center gap-2">
+                <AlertTriangle className="size-4 text-red-500" />
+                {prod.nombre}
+              </TableCell>
+              {/* Aquí también le enseñamos a leer ambas formas */}
+              <TableCell className="text-center text-muted-foreground">
+                {prod.stockMinimo !== undefined ? prod.stockMinimo : prod.stock_minimo}
+              </TableCell>
+              <TableCell className="text-right font-extrabold text-red-600">{prod.stock}</TableCell>
+              <TableCell className="text-center">
+                <Badge variant="destructive" className="animate-pulse shadow-sm">
+                  Reabastecer urgente
+                </Badge>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {lowStockProducts.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="pl-5">
-                  <div className="flex flex-col">
-                    <span className="font-medium text-foreground">
-                      {p.name}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {p.barcode}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="text-base font-semibold text-destructive">
-                    {p.stock}
-                  </span>
-                </TableCell>
-                <TableCell className="text-center text-muted-foreground">
-                  {p.minStock}
-                </TableCell>
-                <TableCell className="pr-5 text-right">
-                  <Button size="sm" className="gap-1.5">
-                    <RotateCw className="size-3.5" />
-                    Reabastecer
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </Card>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
